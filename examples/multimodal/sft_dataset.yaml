@@ -4,12 +4,14 @@ splits:
   train:
     datasets:
       - weight: 1.
-        path: <path_to_sft_dataset_in_energon_format>
+        path: '/mnt/ceph/develop/yuxuan/opensource-team/chenhao/dataset/wds'
         subflavors:
           augmentation: false
+          has_image: true
   val:
     datasets:
       - weight: 1.
-        path: <path_to_sft_dataset_in_energon_format>
+        path: '/mnt/ceph/develop/yuxuan/opensource-team/chenhao/dataset/wds'
         subflavors:
           augmentation: false
+          has_image: true

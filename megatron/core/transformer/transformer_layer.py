@@ -285,7 +285,7 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
                 context (Tensor): Updated context tensor if cross-attention is used,
                 otherwise None.
         """
-
+        
         # Residual connection.
         residual = hidden_states
 
@@ -302,14 +302,13 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
             rotary_pos_sin=rotary_pos_sin,
             packed_seq_params=packed_seq_params,
         )
-
         # TODO: could we move `bias_dropout_add_exec_handler` itself
         # inside the module provided in the `bias_dropout_add_spec` module?
         with self.bias_dropout_add_exec_handler():
             hidden_states = self.self_attn_bda(self.training, self.config.bias_dropout_fusion)(
                 attention_output_with_bias, residual, self.hidden_dropout
             )
-
+        
         # Residual connection.
         residual = hidden_states
 
@@ -336,7 +335,7 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
 
         # Residual connection.
         residual = hidden_states
-
+        
         # Optional Layer norm post the cross-attention.
         pre_mlp_layernorm_output = self.pre_mlp_layernorm(hidden_states)
 
@@ -392,3 +391,108 @@ class TransformerLayer(MegatronModule, BaseTransformerLayer):
         if hasattr(self, 'cudagraph_manager'):
             return self.cudagraph_manager(self, args, kwargs)
         return super(MegatronModule, self).__call__(*args, **kwargs)
+
+class EVAClipTransformerLayer(TransformerLayer):
+    """
+    Transformer layer for EVA Clip
+    """
+    # TODO: `_get_layer_offset` is not correctly implemented for multiple transformers?
+
+    def forward(
+        self,
+        hidden_states,
+        attention_mask,
+        context=None,
+        context_mask=None,
+        rotary_pos_emb=None,
+        rotary_pos_cos=None,
+        rotary_pos_sin=None,
+        inference_params=None,
+        packed_seq_params=None,
+    ):
+        # hidden_states: [s, b, h]
+        #save_activation(hidden_states, f"{self.name}_layer_{self.layer_number:03d}_input")
+
+        attention_input = hidden_states
+
+        # Self attention.
+        attention_output, attention_bias = self.self_attention(
+            attention_input,
+            attention_mask=attention_mask,
+            inference_params=inference_params,
+            rotary_pos_emb=rotary_pos_emb,
+            packed_seq_params=packed_seq_params,
+        )
+
+        assert not self.config.bias_dropout_fusion, f"attention bda fusion is not implemented for EVA Clip layer"
+
+        if attention_bias is not None:
+            attention_output = attention_output + attention_bias
+
+        #save_activation(
+        #    attention_output,
+        #    f"{self.name}_layer_{self.layer_number:03d}_attention_output",
+        #)
+
+        # reuse `self.input_layernorm` for the 1st normalization
+        attention_output_after_layernorm = self.input_layernorm(attention_output)
+        #save_activation(
+        #    attention_output_after_layernorm,
+        #    f"{self.name}_layer_{self.layer_number:03d}_post_attn_layernorm_output"
+        #)
+
+
+        # Attention dropout
+        if self.hidden_dropout:
+            attention_output_after_layernorm_and_dropout = torch.nn.functional.dropout(
+                attention_output_after_layernorm, p=self.hidden_dropout, training=self.training
+            )
+        else:
+            attention_output_after_layernorm_and_dropout = attention_output_after_layernorm
+
+        # Residual connection
+        mlp_input = attention_input + attention_output_after_layernorm_and_dropout
+
+        # MLP.
+        mlp_output, mlp_bias = self.mlp(mlp_input)
+
+        assert not self.config.bias_dropout_fusion, f"mlp bda fusion is not implemented for EVA Clip layer"
+
+        if mlp_bias is not None:
+            mlp_output = mlp_output + mlp_bias
+        #save_activation(
+        #    mlp_output,
+        #    f"{self.name}_layer_{self.layer_number:03d}_mlp_output",
+        #)
+
+        # reuse `self.pre_mlp_layernorm` for the 2nd normalization
+        mlp_output_after_layernorm = self.pre_mlp_layernorm(mlp_output)
+        #save_activation(
+        #    mlp_output_after_layernorm,
+        #    f"{self.name}_layer_{self.layer_number:03d}_post_mlp_layernorm_output"
+        #)
+
+        # MLP dropout
+        if self.hidden_dropout:
+            mlp_output_after_layernorm_and_dropout = torch.nn.functional.dropout(
+                mlp_output_after_layernorm, p=self.hidden_dropout, training=self.training
+            )
+        else:
+            mlp_output_after_layernorm_and_dropout = mlp_output_after_layernorm
+
+        # Residual connection
+        hidden_states = mlp_input + mlp_output_after_layernorm_and_dropout
+
+        # Jit compiled function creates 'view' tensor. This tensor
+        # potentially gets saved in the MPU checkpoint function context,
+        # which rejects view tensors. While making a viewless tensor here
+        # won't result in memory savings (like the data loader, or
+        # p2p_communication), it serves to document the origin of this
+        # 'view' tensor.
+        output = make_viewless_tensor(
+            inp=hidden_states, requires_grad=hidden_states.requires_grad, keep_graph=True
+        )
+
+        #save_activation(output, f"{self.name}_layer_{self.layer_number:03d}_output")
+
+        return output, context

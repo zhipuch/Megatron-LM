@@ -1,21 +1,23 @@
 # Copyright (c) 2024, NVIDIA CORPORATION.  All rights reserved.
-from megatron.core.models.multimodal.llava_model import IMAGE_TOKEN
 
 
 def add_multimodal_extra_args(parser):
     """Extra arguments."""
     group = parser.add_argument_group(title='multimodal arguments')
     group.add_argument('--dataset-config', type=str, default=None)
+    group.add_argument('--tokenizer-name', type=str, default=None)
     group.add_argument("--prompt-path", type=str, default=None)
     group.add_argument('--freeze-LM', action='store_true', default=False)
     group.add_argument('--freeze-ViT', action='store_true', default=False)
-    group.add_argument('--language-model-type', type=str, required=True)
+    group.add_argument('--language-model-type', type=str, default="glm-9b", required=True)
     group.add_argument('--vision-model-type', type=str, default="clip")
+    group.add_argument('--vit_layers', default=[], type=int, nargs='+')
+    group.add_argument('--lm_layers', default=[], type=int, nargs='+')
     group.add_argument("--disable-vision-class-token", action="store_true", default=False)
     group.add_argument(
         "--allow-missing-vision-projection-checkpoint", action="store_true", default=False
     )
-    group.add_argument("--use-te", action="store_true", default=False)
+    group.add_argument("--use-te", action="store_true", default=True)
     group.add_argument(
         "--dataloader-save", type=str, default=None, help="Energon dataloader state save path"
     )
@@ -41,15 +43,9 @@ def add_multimodal_extra_args(parser):
         "--online-evaluation-config", type=str, help="Config file for online evaluation."
     )
     group.add_argument(
-        "--special-tokens",
-        nargs="*",
-        default=[IMAGE_TOKEN],
-        help="Special tokens used in the multimodal model",
-    )
-    group.add_argument(
         "--tokenizer-prompt-format",
         type=str,
-        choices=["mistral", "llama3", "chatml"],
+        choices=["mistral", "llama3", "chatml", "glm4v"],
         required=True,
         help="Prompt format to use with the tokenizer.",
     )

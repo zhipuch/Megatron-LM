@@ -9,10 +9,10 @@ from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.mlp import MLP, MLPSubmodules
 from megatron.core.transformer.spec_utils import ModuleSpec
-from megatron.core.transformer.transformer_layer import TransformerLayer, TransformerLayerSubmodules
+from megatron.core.transformer.transformer_layer import TransformerLayer, EVAClipTransformerLayer, TransformerLayerSubmodules
 
 try:
-    from megatron.core.extensions.transformer_engine import (
+    from megatron.core.transformer.custom_layers.transformer_engine import (
         TEColumnParallelLinear,
         TEDotProductAttention,
         TELayerNormColumnParallelLinear,
@@ -39,6 +39,31 @@ except ImportError:
     warnings.warn(f'Apex is not installed. Falling back to Torch LayerNorm')
     LNImpl = WrappedTorchLayerNorm
 
+
+def get_vit_layer_with_transformer_engine_spec_for_eva_clip(use_te=True):
+    return ModuleSpec(
+        module=EVAClipTransformerLayer,
+        submodules=TransformerLayerSubmodules(
+            self_attention=ModuleSpec(
+                module=SelfAttention,
+                params={"attn_mask_type": AttnMaskType.no_mask},
+                submodules=SelfAttentionSubmodules(
+                    linear_qkv=TEColumnParallelLinear,
+                    core_attention=TEDotProductAttention,
+                    linear_proj=TERowParallelLinear,
+                ),
+            ),
+            mlp=ModuleSpec(
+                module=MLP,
+                submodules=MLPSubmodules(
+                    linear_fc1=TEColumnParallelLinear if use_te else ColumnParallelLinear,
+                    linear_fc2=TERowParallelLinear if use_te else RowParallelLinear,
+                ),
+            ),
+            pre_mlp_layernorm=TENorm,
+            input_layernorm=TENorm,
+        ),
+    )
 
 def get_layer_spec(is_vit, normalization) -> ModuleSpec:
     attn_mask_type = AttnMaskType.no_mask if is_vit else AttnMaskType.causal
@@ -117,4 +142,11 @@ def get_norm_mlp_module_spec_te() -> ModuleSpec:
         submodules=MLPSubmodules(
             linear_fc1=TELayerNormColumnParallelLinear, linear_fc2=TERowParallelLinear
         ),
+    )
+
+def get_proj_module_spec_te() -> MLPSubmodules:
+    return MLPSubmodules(
+        linear_fc1=TEColumnParallelLinear,
+        linear_fc2=TERowParallelLinear,
+        norm=TENorm,
     )

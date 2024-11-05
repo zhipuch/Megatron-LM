@@ -12,12 +12,12 @@ sys.path.append(
 )
 
 from dataloader_provider import train_valid_test_dataloaders_provider
-from model import model_provider
+from glm4v import model_provider
 from multimodal_args import add_multimodal_extra_args
 
 from megatron.core import mpu, tensor_parallel
 from megatron.core.enums import ModelType
-from megatron.core.models.multimodal.llava_model import IGNORE_INDEX, LLaVAModel
+from megatron.core.models.multimodal.glm4v_model import GLM4V
 from megatron.core.parallel_state import get_tensor_model_parallel_rank
 from megatron.training import get_args, get_timers, get_tokenizer, pretrain
 from megatron.training.utils import is_last_rank
@@ -84,7 +84,7 @@ def get_ltor_masks_and_position_ids(input_ids, target, pad_token):
     # Loss mask.
     loss_mask = torch.ones(target.size(), dtype=torch.float, device=input_ids.device)
     loss_mask[target == pad_token] = 0.0  # mask paddings
-    loss_mask[target == IGNORE_INDEX] = 0.0  # mask prompts
+    loss_mask[target == -100] = 0.0  # mask prompts
 
     # Attention mask.
     attention_mask = None
@@ -109,7 +109,7 @@ def loss_func(loss_mask, output_tensor):
     return (total_loss, local_num_tokens, {'lm loss': (reporting_loss[0], reporting_loss[1])})
 
 
-def forward_step(data_iterator, model: LLaVAModel):
+def forward_step(data_iterator, model: GLM4V):
     """Forward training step.
 
     Args:

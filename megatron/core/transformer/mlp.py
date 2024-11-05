@@ -27,7 +27,7 @@ from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 class MLPSubmodules:
     linear_fc1: Union[ModuleSpec, type] = None
     linear_fc2: Union[ModuleSpec, type] = None
-
+    norm: Union[ModuleSpec, type] = None
 
 class MLP(MegatronModule):
     """

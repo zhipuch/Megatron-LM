@@ -14,7 +14,7 @@ from megatron.core.datasets.megatron_tokenizer import MegatronTokenizer
 
 from .bert_tokenization import FullTokenizer as FullBertTokenizer
 from .gpt2_tokenization import GPT2Tokenizer
-from megatron.training.tokenizer.multimodal_tokenizer import MultimodalTokenizer
+from megatron.training.tokenizer.glm4v_tokenizer import MultimodalTokenizer
 
 
 def build_tokenizer(args, **kwargs):
@@ -75,10 +75,10 @@ def build_tokenizer(args, **kwargs):
 
         # Currently, only HuggingFace tokenizers are supported.
         underlying_tokenizer = transformers.AutoTokenizer.from_pretrained(
-            pretrained_model_name_or_path=args.tokenizer_model
+            pretrained_model_name_or_path=args.tokenizer_model,
+            trust_remote_code=True
         )
-
-        tokenizer = MultimodalTokenizer(underlying_tokenizer, args.tokenizer_prompt_format, args.special_tokens)
+        tokenizer = MultimodalTokenizer(underlying_tokenizer, args.tokenizer_prompt_format, underlying_tokenizer.additional_special_tokens)
     else:
         raise NotImplementedError('{} tokenizer is not ' 'implemented.'.format(args.tokenizer_type))
 

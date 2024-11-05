@@ -293,7 +293,7 @@ class TaskEncoder(DefaultTaskEncoder[OCRSample, OCRSample, ImageTaskBatch, dict]
 
         if has_image:
             imgs = get_visual_transform(
-                sample.images[0], self.img_h, self.img_w, self.args.use_tiling, self.args.max_num_tiles, self.args.use_thumbnail, augment,
+                sample.images, self.img_h, self.img_w, self.args.use_tiling, self.args.max_num_tiles, self.args.use_thumbnail, augment,
             )
             num_tiles = [len(imgs)]
         elif has_video:
@@ -317,16 +317,17 @@ class TaskEncoder(DefaultTaskEncoder[OCRSample, OCRSample, ImageTaskBatch, dict]
         conversation = []
         # Note: Some tokenizers may ignore the system prompt.
         conversation.append({"role": "system", "content": "Answer the questions."})
-
+        
+        #glm4v: role | content
         for text in sample.texts:
-            if text["from"] == "human":
+            if text["role"] == "user":
                 role = "user"
-            elif text["from"] == "gpt":
+            elif text["role"] == "assistant":
                 role = "assistant"
             else:
                 raise RuntimeError(f"unexpected role {text['from']} in {sample.texts}")
 
-            turn = {"role": role, "content": text["value"]}
+            turn = {"role": role, "content": text["content"]}
             conversation.append(turn)
 
         input_ids, target = self.tokenizer.tokenize_conversation(conversation, True, False)
